@@ -3,6 +3,8 @@ import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func, inspect
+import numpy as np
+import pandas as pd
 import datetime as dt
 from flask import Flask, jsonify
 
@@ -24,17 +26,25 @@ session = Session(engine)
 ##---------- Flask Setup ---------##
 app = Flask(__name__)
 
-#Flask Routes
+##---------- Flask Routes ---------##
 @app.route("/")
 def welcome():
     """List all available api routes."""
     return (
+        f"Welcome to My Climate App.<br/>"
+        f"<br/>"
         f"Available Routes:<br/>"
+        f"--------------------------------------------<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end><br/>"
+
+        f"--------------------------------------------<br/>"
+        f"Use these to find Minimum, Average, and Maximum Temperatures<br/>"
+        f"Dates should be entered as 'YYYY-MM-DD'<br/>"
+         f"--------------------------------------------<br/>"
+        f"/api/v1.0/start_date<br/>"
+        f"/api/v1.0/start_date/end_date<br/>"
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -64,7 +74,60 @@ def stations():
         stat_dict["Num Meas"] = s.count
         all_stat.append(stat_dict)
     return jsonify(all_stat)
-    
+
+@app.route("/api/v1.0/tobs")
+def temp_observations():
+    #Query the last 12 months of temperature observations
+    temperatures =(session.query(Measurement.date,Measurement.tobs).\
+    filter(Measurement.station == 'USC00519281').\
+    filter(Measurement.date >= '2016-08-23').all())
+    one_year_tobs = []
+    for t in temperatures:
+        tobs_dict = {}
+        tobs_dict["date"] = t.date
+        tobs_dict["tobs"] = t.tobs
+        one_year_tobs.append(tobs_dict)
+    return jsonify(one_year_tobs)
+
+def calc_temps_start_only(start_date):
+    """TMIN, TAVG, and TMAX for a list of dates.
+    Args:
+        start_date (string): A date string in the format %Y-%m-%d
+    Returns:
+        TMIN, TAVE, and TMAX
+    """
+    return session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).filter(Measurement.date >= start_date).all()
+
+
+@app.route("/api/v1.0/<start_date>")
+def start_temps(start_date):
+    temps = calc_temps_start_only(start_date)
+    temps = list(np.ravel(temps))
+    print(temps)
+    return jsonify(temps)
+
+
+def calc_temps_start_end(start_date,end_date):
+    """TMIN, TAVG, and TMAX for a list of dates.
+    Args:
+        start_date (string): A date string in the format %Y-%m-%d
+        end_date (string): A date string in the format %Y-%m-%d
+    Returns:
+        TMIN, TAVE, and TMAX
+    """
+    return session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
+
+
+@app.route("/api/v1.0/<start_date>/<end_date>")
+def start_end_temps(start_date,end_date):
+    temps = calc_temps_start_end(start_date,end_date)
+    temps = list(np.ravel(temps))
+    print(temps)
+    return jsonify(temps)
+
+       
+
+
 
 
 if __name__ == '__main__':
